@@ -1,0 +1,511 @@
+```lua
+-- [[ Grow a Garden - Wind UI Sửa Lỗi Tải Thư Viện ]]
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local CoreGui = game:GetService("CoreGui")
+
+local lp = Players.LocalPlayer
+local minimizeUI = Enum.KeyCode.RightAlt
+
+-- Tải Wind UI từ link Raw GitHub chính thức (Đảm bảo không bị lỗi nil trên Delta)
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/DeisSurvival/WindUI/main/Source.lua"))()
+
+-- Tạo Cửa sổ chính
+local Window = WindUI:CreateWindow({
+    Title = "Grow a Garden",
+    SubTitle = "Wind UI Fixed by Moondiety x Vuk",
+    Author = "Moondiety",
+    Folder = "GrowAGardenConfig"
+})
+
+-- Tạo các Tab điều hướng (Wind UI sử dụng tên icon Lucide dạng string rất mượt mà)
+local Tabs = {
+    Home = Window:Tab({ Title = "Trang Chủ", Icon = "home" }),
+    Auto = Window:Tab({ Title = "Tự Động", Icon = "play" }),
+    Misc = Window:Tab({ Title = "Hỗ Trợ", Icon = "plus-circle" }),
+    Shops = Window:Tab({ Title = "Cửa Hàng", Icon = "shopping-cart" }),
+    Ability = Window:Tab({ Title = "Kỹ Năng", Icon = "zap" }),
+    Guis = Window:Tab({ Title = "Giao Diện", Icon = "layout" }),
+    Events = Window:Tab({ Title = "Sự Kiện", Icon = "calendar" })
+}
+
+-- [[ Các hàm tiện ích hỗ trợ ]]
+local function parseMoney(moneyStr)
+    if not moneyStr then return 0 end
+    moneyStr = tostring(moneyStr):gsub("Â¢", ""):gsub(",", ""):gsub(" ", ""):gsub("%$", "")
+    local multiplier = 1
+    if moneyStr:lower():find("k") then
+        multiplier = 1000
+        moneyStr = moneyStr:lower():gsub("k", "")
+    elseif moneyStr:lower():find("m") then
+        multiplier = 1000000
+        moneyStr = moneyStr:lower():gsub("m", "")
+    end
+    return (tonumber(moneyStr) or 0) * multiplier
+end
+
+-- [[ TAB TRANG CHỦ (HOME) ]]
+local HomeSection = Tabs.Home:Section({ Title = "Thông Tin" })
+
+HomeSection:Paragraph({
+    Title = "Thành viên phát triển",
+    Desc = "Được phát triển bởi Moondiety x Vuk. Đã sửa lỗi liên kết tải giao diện trên Delta Executor."
+})
+
+HomeSection:Button({
+    Title = "Tham gia máy chủ Discord",
+    Desc = "Sao chép liên kết vào bộ nhớ tạm",
+    Callback = function()
+        setclipboard("https://discord.gg/wZ4hBXSrxY")
+        WindUI:Notify({
+            Title = "Thành Công!",
+            Content = "Đã sao chép link Discord vào bộ nhớ tạm.",
+            Duration = 5
+        })
+    end
+})
+
+HomeSection:Button({
+    Title = "Chống treo máy (Anti-AFK)",
+    Desc = "Ngăn chặn bị ngắt kết nối khi không hoạt động",
+    Callback = function()
+        lp.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        WindUI:Notify({ Title = "Hệ thống", Content = "Đã kích hoạt Anti-AFK!", Duration = 5 })
+    end
+})
+
+-- [[ TAB TỰ ĐỘNG (AUTO) ]]
+
+-- Tự động mua trang bị
+local AutoBuySection = Tabs.Auto:Section({ Title = "Tự Động Mua Trang Bị" })
+
+local AllGears = {
+    "All", "Watering Can", "Trading Ticket", "Trowel", "Recall Wrench", "Basic Sprinkler", 
+    "Advanced Sprinkler", "Medium Toy", "Medium Treat", "Godly Sprinkler", "Magnifying Glass", 
+    "Tanning Mirror", "Master Sprinkler", "Cleaning Spray", "Favorite Tool", "Harvest Tool", 
+    "Friendship Pot", "Grandmaster Sprinkler", "Levelup Lollipop"
+}
+local SelectedGears = {}
+
+AutoBuySection:Dropdown({
+    Title = "Chọn trang bị muốn mua",
+    Multi = true,
+    Options = AllGears,
+    Callback = function(Value)
+        SelectedGears = typeof(Value) == "table" and Value or {Value}
+    end
+})
+
+local autoBuySelectedGear = false
+AutoBuySection:Toggle({
+    Title = "Tự động mua trang bị đã chọn",
+    Value = false,
+    Callback = function(state)
+        autoBuySelectedGear = state
+        if state then
+            task.spawn(function()
+                while autoBuySelectedGear do
+                    if #SelectedGears > 0 then
+                        if table.find(SelectedGears, "All") then
+                            for i = 2, #AllGears do
+                                if not autoBuySelectedGear then break end
+                                ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("BuyGearStock"):FireServer(AllGears[i])
+                                task.wait(0.05)
+                            end
+                        else
+                            for _, gear in ipairs(SelectedGears) do
+                                if not autoBuySelectedGear then break end
+                                ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("BuyGearStock"):FireServer(gear)
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Tự động mua trứng
+local AutoEggSection = Tabs.Auto:Section({ Title = "Tự Động Mua Trứng" })
+local eggList = { "Common Egg", "Common Summer Egg", "Rare Summer Egg", "Mythical Egg", "Paradise Summer Egg", "Bee Egg", "Bug Egg" }
+local SelectedEggs = {}
+
+AutoEggSection:Dropdown({
+    Title = "Chọn loại trứng muốn mua",
+    Multi = true,
+    Options = { "All", unpack(eggList) },
+    Callback = function(Value)
+        SelectedEggs = typeof(Value) == "table" and Value or {Value}
+    end
+})
+
+local autoBuyEggs = false
+AutoEggSection:Toggle({
+    Title = "Tự động mua trứng đã chọn",
+    Value = false,
+    Callback = function(state)
+        autoBuyEggs = state
+        if state then
+            task.spawn(function()
+                while autoBuyEggs do
+                    local toBuy = table.find(SelectedEggs, "All") and eggList or SelectedEggs
+                    for _, eggName in ipairs(toBuy) do
+                        if not autoBuyEggs then break end
+                        ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("BuyPetEgg"):FireServer(eggName)
+                        task.wait(0.5)
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- Tự động thu hoạch
+local HarvestSection = Tabs.Auto:Section({ Title = "Tự Động Thu Hoạch" })
+local harvestSpeed = 0.1
+
+HarvestSection:Input({
+    Title = "Tốc độ thu hoạch (Giây)",
+    Placeholder = "0.1",
+    Callback = function(value)
+        local num = tonumber(value)
+        harvestSpeed = (num and num > 0) and num or 0.1
+    end
+})
+
+local autoHarvest = false
+HarvestSection:Toggle({
+    Title = "Kích hoạt tự động thu hoạch",
+    Value = false,
+    Callback = function(state)
+        autoHarvest = state
+        if state then
+            task.spawn(function()
+                local getFarm = require(ReplicatedStorage.Modules.GetFarm)
+                local byteNetReliable = ReplicatedStorage:WaitForChild("ByteNetReliable")
+                local bufferData = buffer.fromstring("\1\1\0\1")
+
+                while autoHarvest do
+                    local farm = getFarm(lp)
+                    if farm and farm:FindFirstChild("Important") and farm.Important:FindFirstChild("Plants_Physical") then
+                        for _, plant in ipairs(farm.Important.Plants_Physical:GetChildren()) do
+                            if not autoHarvest then break end
+                            byteNetReliable:FireServer(bufferData, { plant })
+                            task.wait(harvestSpeed)
+
+                            local fruits = plant:FindFirstChild("Fruits", true)
+                            if fruits then
+                                for _, fruit in ipairs(fruits:GetChildren()) do
+                                    if not autoHarvest then break end
+                                    byteNetReliable:FireServer(bufferData, { fruit })
+                                    task.wait(harvestSpeed)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+-- Tự động bán
+local AutoSellSection = Tabs.Auto:Section({ Title = "Tự Động Bán" })
+local autoSellEnabled = false
+
+local function sellItems()
+    local steven = workspace.NPCS:FindFirstChild("Steven")
+    if not steven or not lp.Character then return end
+    local hrp = lp.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local originalPosition = hrp.CFrame
+    hrp.CFrame = steven.HumanoidRootPart.CFrame * CFrame.new(0, 3, 3)
+    task.wait(0.5)
+    for _ = 1, 5 do
+        ReplicatedStorage.GameEvents.Sell_Inventory:FireServer()
+        task.wait(0.15)
+    end
+    hrp.CFrame = originalPosition
+end
+
+AutoSellSection:Toggle({
+    Title = "Tự động dịch chuyển & bán vật phẩm",
+    Value = false,
+    Callback = function(state)
+        autoSellEnabled = state
+        if state then
+            task.spawn(function()
+                while autoSellEnabled do
+                    sellItems()
+                    task.wait(5)
+                end
+            end)
+        end
+    end
+})
+
+-- [[ TAB HỖ TRỢ (MISC) ]]
+local CraftSection = Tabs.Misc:Section({ Title = "Tự Động Chế Tạo" })
+local CraftingService = ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("CraftingGlobalObjectService")
+getgenv().usedUUIDs = getgenv().usedUUIDs or {}
+
+local function inputToolByName(name, index, itemType, Workbench, WorkbenchName, exactMatch)
+    itemType = itemType or "Holdable"
+    local backpack = lp:WaitForChild("Backpack")
+    
+    local function cleanToolName(str)
+        str = str:gsub("%s*x%d+$", "")
+        str = str:gsub("%s*%[.-%]%s*", "")
+        return str
+    end
+    
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            local toolNameToCheck = cleanToolName(tool.Name)
+            local matched = exactMatch and (toolNameToCheck == name) or toolNameToCheck:find(name)
+            
+            if matched then
+                local uuid = tool:GetAttribute("c")
+                if uuid and not table.find(getgenv().usedUUIDs, uuid) then
+                    CraftingService:FireServer("InputItem", Workbench, WorkbenchName, index, {
+                        ItemType = itemType,
+                        ItemData = { UUID = uuid }
+                    })
+                    table.insert(getgenv().usedUUIDs, uuid)
+                    task.wait(0.25)
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function triggerProximityPrompt(workbench)
+    task.wait(1.5)
+    for _, descendant in ipairs(workbench:GetDescendants()) do
+        if descendant:IsA("ProximityPrompt") and descendant.Name == "CraftingProximityPrompt" then
+            fireproximityprompt(descendant)
+            break
+        end
+    end
+end
+
+-- Mẫu hàm chế tạo mẫu đã sửa lỗi
+local function craftLightningRod()
+    getgenv().usedUUIDs = {}
+    local Workbench = workspace:WaitForChild("CraftingTables"):WaitForChild("EventCraftingWorkBench")
+    local WorkbenchName = "GearEventWorkbench"
+    CraftingService:FireServer("SetRecipe", Workbench, WorkbenchName, "Lightning Rod")
+    task.wait(0.5)
+    local success = true
+    success = success and inputToolByName("Basic Sprinkler", 1, "Sprinkler", Workbench, WorkbenchName)
+    success = success and inputToolByName("Advanced Sprinkler", 2, "Sprinkler", Workbench, WorkbenchName)
+    success = success and inputToolByName("Godly Sprinkler", 3, "Sprinkler", Workbench, WorkbenchName)
+    if success then
+        task.wait(0.2)
+        triggerProximityPrompt(Workbench)
+    end
+end
+
+local selectedCraftItem = "Lightning Rod"
+CraftSection:Dropdown({
+    Title = "Chọn công thức chế tạo",
+    Multi = false,
+    Options = { "Lightning Rod" }, -- Thêm các công thức khác tại đây tương tự
+    Callback = function(value)
+        selectedCraftItem = value
+    end
+})
+
+local autoCraftActive = false
+CraftSection:Toggle({
+    Title = "Tự động chế tạo trang bị chọn",
+    Value = false,
+    Callback = function(state)
+        autoCraftActive = state
+        if state then
+            task.spawn(function()
+                while autoCraftActive do
+                    if selectedCraftItem == "Lightning Rod" then
+                        craftLightningRod()
+                    end
+                    task.wait(10)
+                end
+            end)
+        end
+    end
+})
+
+-- [[ TAB KỸ NĂNG (ABILITY) ]]
+local AbilitySection = Tabs.Ability:Section({ Title = "Hỗ Trợ Di Chuyển" })
+
+local flyEnabled = false
+local flySpeed = 48
+local bodyVelocity, bodyGyro
+local flightConnection
+
+local function ToggleFly(state)
+    flyEnabled = state
+    local char = lp.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    if flyEnabled then
+        bodyGyro = Instance.new("BodyGyro")
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyGyro.P = 9000
+        bodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 999999
+        bodyGyro.CFrame = char.HumanoidRootPart.CFrame
+        bodyGyro.Parent = char.HumanoidRootPart
+
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.MaxForce = Vector3.new(1, 1, 1) * 999999
+        bodyVelocity.Parent = char.HumanoidRootPart
+
+        humanoid.PlatformStand = true
+
+        flightConnection = RunService.Heartbeat:Connect(function()
+            if not flyEnabled or not char:FindFirstChild("HumanoidRootPart") then
+                if flightConnection then flightConnection:Disconnect() end
+                return
+            end
+
+            local cam = workspace.CurrentCamera.CFrame
+            local moveVec = Vector3.new()
+
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVec += cam.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVec -= cam.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVec -= cam.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVec += cam.RightVector end
+
+            if moveVec.Magnitude > 0 then
+                moveVec = moveVec.Unit * flySpeed
+            end
+            bodyVelocity.Velocity = moveVec
+            bodyGyro.CFrame = cam
+        end)
+    else
+        if bodyVelocity then bodyVelocity:Destroy() end
+        if bodyGyro then bodyGyro:Destroy() end
+        humanoid.PlatformStand = false
+        if flightConnection then
+            flightConnection:Disconnect()
+            flightConnection = nil
+        end
+    end
+end
+
+AbilitySection:Toggle({
+    Title = "Chế độ bay (Fly)",
+    Value = false,
+    Callback = function(state)
+        ToggleFly(state)
+    end
+})
+
+AbilitySection:Slider({
+    Title = "Tốc độ bay",
+    Min = 10,
+    Max = 150,
+    Value = 48,
+    Callback = function(value)
+        flySpeed = value
+    end
+})
+
+-- [[ TAB CỬA HÀNG (SHOPS) ]]
+local ShopVisualSection = Tabs.Shops:Section({ Title = "Mở Giao Diện Từ Xa" })
+
+ShopVisualSection:Toggle({
+    Title = "Cửa Hàng Hạt Giống",
+    Value = false,
+    Callback = function(state)
+        local shop = lp.PlayerGui:FindFirstChild("Seed_Shop")
+        if shop then shop.Enabled = state end
+    end
+})
+
+ShopVisualSection:Toggle({
+    Title = "Cửa Hàng Trang Bị",
+    Value = false,
+    Callback = function(state)
+        local gear = lp.PlayerGui:FindFirstChild("Gear_Shop")
+        if gear then gear.Enabled = state end
+    end
+})
+
+-- [[ TẠO NÚT TRÒN DI ĐỘNG ĐỂ ẨN/HIỆN MENU ]]
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WindUI_ToggleButton"
+screenGui.Parent = CoreGui
+
+local imageButton = Instance.new("ImageButton")
+imageButton.Size = UDim2.new(0, 50, 0, 50)
+imageButton.Position = UDim2.new(0, 10, 1, -160)
+imageButton.BackgroundTransparency = 1
+imageButton.Image = "rbxassetid://133495621202705"
+imageButton.Parent = screenGui
+imageButton.Active = true
+local uiCorner = Instance.new("UICorner", imageButton)
+uiCorner.CornerRadius = UDim.new(1, 0)
+
+-- Kéo thả nút di chuyển
+local dragging, dragStart, startPos, dragInput
+imageButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = imageButton.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                local moved = (input.Position - dragStart).Magnitude
+                if moved < 10 then
+                    -- Ẩn/Hiện Menu Wind UI
+                    local gui = CoreGui:FindFirstChild("WindUI") or CoreGui:FindFirstChild("ScreenGui")
+                    if gui then
+                        for _, f in ipairs(gui:GetChildren()) do
+                            if f:IsA("Frame") then f.Visible = not f.Visible end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+imageButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        imageButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+WindUI:Notify({
+    Title = "Khởi Chạy thành công",
+    Content = "Wind UI đã tải thành công không gặp lỗi!",
+    Duration = 5
+})
+
+```
